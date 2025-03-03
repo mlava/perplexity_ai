@@ -1,4 +1,4 @@
-Search the advanced conversational search engine at Perplexity AI using their API from within your Roam Research graph.
+Search the advanced conversational search engine at Perplexity AI using their API from within your Roam Research graph!
 
 You will need an API key from https://www.perplexity.ai/settings/api and you can enter this in the Roam Depot settings for this extension. 
 
