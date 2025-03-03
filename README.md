@@ -36,4 +36,4 @@ For the 'Search domain filter' you can enter domains that you wish to search fro
 
 `["space.com", "nasa.gov", "-wikipedia.org"]`
 
-If you have any issues, you can check the API documents at Perplexity or ask questions on Slack.
+If you have any issues, you can check the API documents at Perplexity or ask questions on [Slack](https://app.slack.com/client/TNEAEL9QW/).
