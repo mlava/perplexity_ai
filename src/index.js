@@ -115,8 +115,8 @@ export default {
                 {
                     id: "pplx-searchFilter",
                     name: "Search domain filter",
-                    description: "Default system prompt / instructions",
-                    action: { type: "input", placeholder: "{include: ['space.com', 'nasa.gov'], exclude: ['wikipedia.org', 'reddit.com']" },
+                    description: "Limit the citations used by the online model to URLs from the specified domains. Prepend with - to exclude a domain (as shown in default). Max 3 domains.",
+                    action: { type: "input", placeholder: '["includedDomain.com", "-excludedDomain.com"]' },
                 },
                 {
                     id: "pplx-images",
