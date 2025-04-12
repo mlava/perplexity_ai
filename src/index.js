@@ -502,7 +502,6 @@ export default {
                     return await fetch(pplx_url, options)
                         .then(response => response.json())
                         .then(response => {
-                            // console.info(response);
                             var string = response.choices[0].message.content;
                             const messageObject = {
                                 role: "assistant",
