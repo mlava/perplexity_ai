@@ -234,7 +234,7 @@ export default {
             text: "PPLXFOLLOWUP",
             help: "Ask a Follow-Up question from Perplexity AI",
             handler: (context) => () => {
-                var messageHistory = context.variables.messageHistory;
+                var messageHistory = context.variables.messageHistory; // only needed for legacy follow-up buttons
                 var uid = context.triggerUid;
                 fetchPplx(true, uid, messageHistory);
                 return '';
@@ -270,7 +270,7 @@ export default {
                     break breakme;
                 } else {
                     var apiKey = extensionAPI.settings.get("pplx-apiKey");
-                    if (extensionAPI.settings.get("pplx-model") != "Preferred Model") {
+                    if (extensionAPI.settings.get("pplx-model") != "Preferred Model" && extensionAPI.settings.get("pplx-model") != null) {
                         model = extensionAPI.settings.get("pplx-model");
                     } else {
                         model = "sonar";
@@ -340,7 +340,7 @@ export default {
                     if (extensionAPI.settings.get("pplx-relatedQuestions") == true) {
                         relatedQs = true;
                     }
-                    if (extensionAPI.settings.get("pplx-recency") != "Timeframe") {
+                    if (extensionAPI.settings.get("pplx-recency") != null && extensionAPI.settings.get("pplx-recency") != "Timeframe") {
                         if (extensionAPI.settings.get("pplx-recency") == "Last Month") {
                             recency = "month";
                         } else if (extensionAPI.settings.get("pplx-recency") == "Last Week") {
@@ -406,48 +406,81 @@ export default {
                     // create the query body
                     var messages = [];
                     var message;
+                    var blockProps = await window.roamAlphaAPI.data.pull("[*]", [":block/uid", uid])?.[":block/props"];
+
                     if (sb == true) {
-                        // first, save the current block text just in case user cancels search so we can restore the original text
-                        originalBlock = "{{Ask Follow-Up Question:SmartBlock:PerplexityFollowUp:messageHistory=" + messageHistory + "}}";
+                        if (messageHistory != null && messageHistory != undefined) { // this section only needed for anyone with legacy follow-up buttons with hard-coded message history
+                            // first, save the current block text just in case user cancels search so we can restore the original text
+                            originalBlock = "{{Ask Follow-Up Question:SmartBlock:PerplexityFollowUp:messageHistory=" + messageHistory + "}}";
 
-                        // then, make it ready to use
-                        const regex = /___/gm;
-                        const subst = `:`;
-                        const regex1 = /______/gm;
-                        const subst1 = `,`;
-                        messageHistory = messageHistory.replace(regex1, subst1);
-                        messageHistory = messageHistory.replace(regex, subst);
+                            // then, make it ready to use
+                            const regex = /___/gm;
+                            const subst = `:`;
+                            const regex1 = /______/gm;
+                            const subst1 = `,`;
+                            messageHistory = messageHistory.replace(regex1, subst1);
+                            messageHistory = messageHistory.replace(regex, subst);
 
-                        messageHistory = JSON.parse(messageHistory);
-                        for (const message of messageHistory) {
-                            if (message) {
-                                messages.push(message);
+                            messageHistory = JSON.parse(messageHistory);
+                            for (const message of messageHistory) {
+                                if (message) {
+                                    messages.push(message);
+                                }
+                            }
+                        } else {
+                            // first, save the current block text just in case user cancels search so we can restore the original text
+                            originalBlock = "{{Ask Follow-Up Question:SmartBlock:PerplexityFollowUp}}";
+
+                            // then, get prior message history 
+                            if (blockProps?.[":pplx_msg_history"]) {
+                                messageHistory = blockProps[":pplx_msg_history"];
+                                const convertedObject = messageHistory.map(item =>
+                                    Object.fromEntries(
+                                        Object.entries(item).map(([key, value]) => [key.replace(/^:/, ''), value])
+                                    )
+                                );
+                                for (const message of convertedObject) {
+                                    if (message) {
+                                        messages.push(message);
+                                    }
+                                }
                             }
                         }
                     } else {
+                        // get the current block text just in case user cancels search so we can restore the original text
+                        originalBlock = await window.roamAlphaAPI.pull("[:block/string]", [":block/uid", uid])?.[":block/string"];
+
                         if (instructions != undefined && instructions != null) {
                             message = `{"role":"system", "content":"${instructions}"}`;
                             messages.push(JSON.parse(message));
                         }
                     }
-                    let string = "What do you want to ask?";
 
-                    if (!sb) { 
-                        // get the current block text just in case user cancels search so we can restore the original text
-                        originalBlock = await window.roamAlphaAPI.pull("[:block/string]", [":block/uid", uid])?.[":block/string"];
+                    let string = "What do you want to ask?";
+                    var searchQuery;
+                    if (!sb) {
+                        searchQuery = await prompt(string, 1, null, originalBlock);
+                    } else {
+                        searchQuery = await prompt(string, 1, null, null);
                     }
 
-                    var searchQuery = await prompt(string, 1);
-
                     if (searchQuery != "cancelled") {
-                        await sleep(50);
-                        await window.roamAlphaAPI.updateBlock({
-                            block: { "uid": uid, "string": searchQuery, }
-                        });
-                        childUid = window.roamAlphaAPI.util.generateUID();
-                        window.roamAlphaAPI.createBlock({ "location": { "parent-uid": uid, "order": 0 }, "block": { "string": "Loading...", "uid": childUid } });
-                        message = `{"role":"user", "content":"${searchQuery}"}`;
-                        messages.push(JSON.parse(message));
+                        if (searchQuery != null && searchQuery != "") {
+                            await sleep(50);
+                            await window.roamAlphaAPI.updateBlock({
+                                block: { "uid": uid, "string": searchQuery, }
+                            });
+                            childUid = window.roamAlphaAPI.util.generateUID();
+                            window.roamAlphaAPI.createBlock({ "location": { "parent-uid": uid, "order": 0 }, "block": { "string": "Loading...", "uid": childUid } });
+                            message = `{"role":"user", "content":"${searchQuery}"}`;
+                            messages.push(JSON.parse(message));
+                        } else {
+                            prompt("Make sure to enter something you want to search!", 2, 3000);
+                            await window.roamAlphaAPI.updateBlock({
+                                block: { "uid": uid, "string": originalBlock, }
+                            });
+                            return '';
+                        }
                     } else {
                         prompt("You cancelled the search", 2, 3000);
                         await window.roamAlphaAPI.updateBlock({
@@ -492,7 +525,7 @@ export default {
                     if (frequencyPenalty != null && frequencyPenalty != undefined) {
                         data.frequency_penalty = frequencyPenalty;
                     }
-                    
+
                     var options = {
                         method: 'POST',
                         headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
@@ -534,15 +567,7 @@ export default {
 
                             if (window.roamjs?.extension?.smartblocks && followUpSwitch) {
                                 var followUp = [];
-                                var askAnother = "";
-                                const regex = /:/gm;
-                                const subst = `___`;
-                                const regex1 = /,/gm;
-                                const subst1 = `______`;
-                                var messageString = JSON.stringify(messages);
-                                messageString = messageString.replace(regex, subst);
-                                messageString = messageString.replace(regex1, subst1);
-                                askAnother = "{{Ask Follow-Up Question:SmartBlock:PerplexityFollowUp:messageHistory=" + messageString + "}}";
+                                var askAnother = "{{Ask Follow-Up Question:SmartBlock:PerplexityFollowUp}}";
                                 followUp.push({ "text": askAnother });
                                 extras.push({ followUp });
                             }
@@ -563,21 +588,29 @@ export default {
                                 const sourceUid = window.roamAlphaAPI.util.generateUID();
                                 window.roamAlphaAPI.createBlock({ "location": { "parent-uid": uid, "order": 1 }, "block": { "string": "Follow Up:", "uid": sourceUid } });
 
-                                extras[0].followUp.forEach((node, order) => createBlock({
-                                    sourceUid,
-                                    order,
-                                    node
-                                }));
+                                const sourceUid1 = window.roamAlphaAPI.util.generateUID();
+                                window.roamAlphaAPI.createBlock({
+                                    "location": { "parent-uid": sourceUid, "order": 0 }, "block": {
+                                        "string": extras[0].followUp[0].text, "uid": sourceUid1,
+                                        "props": {
+                                            "pplx_msg_history": messages
+                                        }
+                                    }
+                                });
                             }
                             if (!isArrayEmpty(extras) && extras.length > 1) {
                                 const sourceUid = window.roamAlphaAPI.util.generateUID();
                                 window.roamAlphaAPI.createBlock({ "location": { "parent-uid": uid, "order": 2 }, "block": { "string": "Follow Up:", "uid": sourceUid } });
 
-                                extras[1].followUp.forEach((node, order) => createBlock({
-                                    sourceUid,
-                                    order,
-                                    node
-                                }));
+                                const sourceUid1 = window.roamAlphaAPI.util.generateUID();
+                                window.roamAlphaAPI.createBlock({
+                                    "location": { "parent-uid": sourceUid, "order": 0 }, "block": {
+                                        "string": extras[1].followUp[0].text, "uid": sourceUid1,
+                                        "props": {
+                                            "pplx_msg_history": messages
+                                        }
+                                    }
+                                });
                             }
                         })
                         .catch(err => {
@@ -711,9 +744,12 @@ function sendConfigAlert(key, key1) {
     }
 }
 
-async function prompt(string, type, duration) {
+async function prompt(string, type, duration, originalBlock) {
     if (type == 1) {
         return new Promise((resolve) => {
+            if (originalBlock == null || originalBlock == undefined) {
+                originalBlock = "enter your query"
+            }
             iziToast.question({
                 theme: 'light',
                 color: 'black',
@@ -731,12 +767,16 @@ async function prompt(string, type, duration) {
                 onClosed: function () { resolve("cancelled") },
                 inputs: [
                     [
-                        '<input type="text" placeholder="">',
+                        `<input type="text" placeholder="${originalBlock}">`,
                         "keyup",
                         function (instance, toast, input, e) {
                             if (e.code === "Enter") {
                                 instance.hide({ transitionOut: "fadeOut" }, toast, "button");
-                                resolve(e.srcElement.value);
+                                if (e.srcElement.value) {
+                                    resolve(e.srcElement.value);
+                                } else {
+                                    resolve(originalBlock);
+                                }
                             }
                         },
                         true,
@@ -747,7 +787,11 @@ async function prompt(string, type, duration) {
                         "<button><b>Confirm</b></button>",
                         async function (instance, toast, button, e, inputs) {
                             instance.hide({ transitionOut: "fadeOut" }, toast, "button");
-                            resolve(inputs[0].value);
+                            if (inputs[0].value) {
+                                resolve(inputs[0].value);
+                            } else {
+                                resolve(originalBlock);
+                            }
                         },
                         false,
                     ],
